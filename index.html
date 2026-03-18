@@ -327,6 +327,8 @@ tbody tr:last-child td{border-bottom:none}
 
 <script>
 
+var currentUID=null,fbAuth=null,fbDb=null;
+
 window.addEventListener('load',function(){
   if(typeof firebase==='undefined'){
     var btn=document.getElementById('authLoggedOut');
@@ -344,9 +346,8 @@ var firebaseConfig={
   appId:"1:272621467759:web:2c3ed79d7d08ce213f759a"
 };
 firebase.initializeApp(firebaseConfig);
-var fbAuth=firebase.auth();
-var fbDb=firebase.firestore();
-var currentUID=null;
+fbAuth=firebase.auth();
+fbDb=firebase.firestore();
 
 function toEmail(u){return u.trim().toLowerCase()+'@aintuition.app';}
 
@@ -413,7 +414,6 @@ fbAuth.onAuthStateChanged(function(user){
     document.getElementById('authUsername').textContent=uname;
     document.getElementById('authLoggedOut').style.display='none';
     document.getElementById('authLoggedIn').style.display='flex';
-    isDirty=false;
     loadData();
   } else {
     currentUID=null;
@@ -433,7 +433,7 @@ function saveData(){
     savedAt:new Date().toISOString()
   };
   fbDb.collection('users').doc(currentUID).set(data)
-    .then(function(){isDirty=false;showToast('Saved!');})
+    .then(function(){showToast('Saved!');})
     .catch(function(e){showToast('Save failed: '+e.message);});
 }
 
@@ -461,7 +461,6 @@ function loadData(){
         renderWdrs();
       }
       schedule();
-      isDirty=false;
       showToast('Settings loaded!');
     })
     .catch(function(e){console.error('Load error:',e);});
@@ -469,7 +468,7 @@ function loadData(){
 
 });
 
-var res=[],cv='tp',deps=[],wdrs=[],dID=0,wID=0,tmr=null,isDirty=false;
+var res=[],cv='tp',deps=[],wdrs=[],dID=0,wID=0,tmr=null;
 
 function fb(n){
   if(!n||isNaN(n))return'$0';
@@ -958,7 +957,7 @@ function refreshHints(){
   }
 }
 
-function schedule(){isDirty=true;if(tmr)clearTimeout(tmr);tmr=setTimeout(updateAll,300);}
+function schedule(){if(tmr)clearTimeout(tmr);tmr=setTimeout(updateAll,300);}
 
 function exportCSV(){
   if(!res.length)return;
@@ -980,13 +979,9 @@ function showToast(msg){
   setTimeout(function(){t.classList.remove('on');},2200);
 }
 
-window.addEventListener('beforeunload',function(e){
-  if(currentUID&&isDirty){
-    e.preventDefault();
-    e.returnValue='You have unsaved changes. Are you sure you want to leave?';
-    return e.returnValue;
-  }
-});
+setInterval(function(){
+  if(currentUID)saveData();
+},10000);
 
 window.addEventListener('resize',function(){if(res.length)drawChart();});
 document.addEventListener('DOMContentLoaded',function(){
