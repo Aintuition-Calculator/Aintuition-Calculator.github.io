@@ -350,19 +350,24 @@ tbody tr:last-child td{border-bottom:none}
       <input type="email" id="authEmail" placeholder="your@email.com" autocomplete="email" style="margin-bottom:4px">
       <p style="font-size:11px;color:var(--text3);margin-bottom:12px">Only used if you ever need to reset your password. We never share it.</p>
     </div>
-    <div id="forgotLink" style="text-align:right;margin-bottom:10px">
-      <button type="button" onclick="switchTab('forgot')" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;padding:0;font-family:inherit;transition:color .15s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text3)'">Forgot password?</button>
-    </div>
-    <div id="forgotWrap" style="display:none">
-      <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Enter your username below. A reset link will be sent to the recovery email you provided when you signed up.</p>
-      <label for="forgotUser">Username</label>
-      <input type="text" id="forgotUser" placeholder="Enter your username" autocomplete="username" style="margin-bottom:8px">
-      <div class="modal-err" id="forgotErr" style="min-height:18px"></div>
-      <button class="modal-btn" onclick="submitForgot()">Send reset link</button>
-      <button type="button" onclick="switchTab('login')" style="width:100%;margin-top:8px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit;padding:4px;transition:color .15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text3)'">&#8592; Back to login</button>
+    <div id="forgotLink" style="text-align:right;margin-bottom:10px;display:block">
+      <button type="button" onclick="openForgotModal()" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;padding:0;font-family:inherit;transition:color .15s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text3)'">Forgot password?</button>
     </div>
     <div class="modal-err" id="authErr"></div>
     <button class="modal-btn" id="authSubmitBtn" onclick="submitAuth()">Login</button>
+  </div>
+</div>
+
+<!-- Forgot Password Modal -->
+<div class="modal-overlay" id="forgotModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeForgotModal()">&#215;</button>
+    <h2>Forgot Password?</h2>
+    <p style="font-size:13px;color:var(--text2);margin:8px 0 18px">Enter the recovery email you provided when you signed up. We'll send you a link to reset your password.</p>
+    <label for="forgotEmail">Recovery email</label>
+    <input type="email" id="forgotEmail" placeholder="your@email.com" autocomplete="email" style="margin-bottom:8px">
+    <div id="forgotErr" style="font-size:12px;min-height:18px;margin-bottom:12px"></div>
+    <button class="modal-btn" onclick="submitForgot()">Send reset link</button>
   </div>
 </div>
 
@@ -399,7 +404,7 @@ function closeModal(){
   var m=document.getElementById('authModal');
   if(m)m.classList.remove('show');
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeForgotModal();}});
 
 function togglePw(id,btn){
   var inp=document.getElementById(id);
@@ -422,6 +427,7 @@ function switchTab(mode){
   var btn=document.getElementById('authSubmitBtn');
   var err=document.getElementById('authErr');
   var cpw=document.getElementById('confirmPassWrap');
+  var fl=document.getElementById('forgotLink');
   if(title)title.textContent=mode==='login'?'Welcome back':'Create account';
   if(sub)sub.textContent=mode==='login'
     ?'Sign in to save your settings, deposits, and withdrawals — no need to re-enter them every time.'
@@ -429,11 +435,11 @@ function switchTab(mode){
   if(btn)btn.textContent=mode==='login'?'Login':'Sign Up';
   if(err)err.textContent='';
   if(cpw)cpw.style.display=mode==='signup'?'block':'none';
+  if(fl)fl.style.display=mode==='login'?'block':'none';
   var ul=document.getElementById('authUserLabel');
   var uEl=document.getElementById('authUser');
   if(ul)ul.textContent=mode==='login'?'Username or email':'Username';
   if(uEl)uEl.placeholder=mode==='login'?'Enter username or email':'Enter username';
-  // Reset confirm field and eye icons when switching tabs
   var cp=document.getElementById('authPassConfirm');
   if(cp){cp.value='';cp.type='password';}
   var em=document.getElementById('authEmail');
@@ -443,25 +449,36 @@ function switchTab(mode){
 }
 
 
+function openForgotModal(){
+  var m=document.getElementById('forgotModal');
+  if(m)m.classList.add('show');
+  var el=document.getElementById('forgotEmail');
+  if(el){el.value='';el.focus();}
+  var err=document.getElementById('forgotErr');
+  if(err){err.textContent='';err.style.color='var(--red)';}
+}
+function closeForgotModal(){
+  var m=document.getElementById('forgotModal');
+  if(m)m.classList.remove('show');
+}
+
 function submitForgot(){
   if(!fbAuth){showToast('Auth not ready. Please wait.');return;}
-  var uEl=document.getElementById('forgotUser');
+  var eEl=document.getElementById('forgotEmail');
   var errEl=document.getElementById('forgotErr');
-  var u=uEl?uEl.value.trim():'';
-  if(!u){if(errEl)errEl.textContent='Please enter your username.';return;}
-  var email=toEmail(u);
-  if(errEl)errEl.textContent='';
+  var email=eEl?eEl.value.trim():'';
+  if(!email){if(errEl)errEl.textContent='Please enter your recovery email.';return;}
+  if(errEl){errEl.style.color='var(--red)';errEl.textContent='';}
   fbAuth.sendPasswordResetEmail(email)
     .then(function(){
-      if(errEl){errEl.style.color='var(--green)';errEl.textContent='Reset link sent! Check the recovery email you provided at signup.';}
-      var uEl=document.getElementById('forgotUser');
-      if(uEl)uEl.value='';
+      if(errEl){errEl.style.color='var(--green)';errEl.textContent='Reset link sent! Check your inbox.';}
+      if(eEl)eEl.value='';
     })
     .catch(function(e){
       if(errEl){
         errEl.style.color='var(--red)';
-        errEl.textContent=e.code==='auth/user-not-found'
-          ?'No account found with that username.'
+        errEl.textContent=e.code==='auth/user-not-found'||e.code==='auth/invalid-email'
+          ?'No account found with that email.'
           :'Error: '+e.message;
       }
     });
@@ -500,12 +517,24 @@ function submitAuth(){
     var realEmail=realEmailEl?realEmailEl.value.trim():'';
     fbAuth.createUserWithEmailAndPassword(email,p)
       .then(function(cred){
-        // Store real email in profile doc if provided
-        if(realEmail&&fbDb){
-          fbDb.collection('users').doc(cred.user.uid).set({recoveryEmail:realEmail},{merge:true})
-            .catch(function(){});
+        var afterSetup=function(){closeModal();};
+        if(realEmail&&cred.user){
+          // Update Firebase Auth email to real email so password reset works
+          cred.user.updateEmail(realEmail)
+            .then(function(){
+              if(fbDb)fbDb.collection('users').doc(cred.user.uid)
+                .set({recoveryEmail:realEmail},{merge:true}).catch(function(){});
+              afterSetup();
+            })
+            .catch(function(){
+              // If updateEmail fails (e.g. email already in use), still save to Firestore
+              if(fbDb)fbDb.collection('users').doc(cred.user.uid)
+                .set({recoveryEmail:realEmail},{merge:true}).catch(function(){});
+              afterSetup();
+            });
+        } else {
+          afterSetup();
         }
-        closeModal();
       })
       .catch(function(e){
         if(errEl)errEl.textContent=e.code==='auth/email-already-in-use'
@@ -1130,6 +1159,10 @@ document.addEventListener('DOMContentLoaded',function(){
   if(passEl)passEl.addEventListener('keydown',function(e){if(e.key==='Enter')submitAuth();});
   if(userEl)userEl.addEventListener('keydown',function(e){if(e.key==='Enter'){var p=document.getElementById('authPass');if(p)p.focus();}});
   if(modalEl)modalEl.addEventListener('click',function(e){if(e.target===modalEl)closeModal();});
+  var forgotModalEl=document.getElementById('forgotModal');
+  if(forgotModalEl)forgotModalEl.addEventListener('click',function(e){if(e.target===forgotModalEl)closeForgotModal();});
+  var forgotEmailEl=document.getElementById('forgotEmail');
+  if(forgotEmailEl)forgotEmailEl.addEventListener('keydown',function(e){if(e.key==='Enter')submitForgot();});
 });
 updateAll();
 </script>
