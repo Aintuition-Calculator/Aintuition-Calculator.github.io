@@ -463,24 +463,30 @@ function closeForgotModal(){
 }
 
 function submitForgot(){
-  if(!fbAuth){showToast('Auth not ready. Please wait.');return;}
+  if(!fbAuth||!fbDb){showToast('Auth not ready. Please wait.');return;}
   var eEl=document.getElementById('forgotEmail');
   var errEl=document.getElementById('forgotErr');
-  var email=eEl?eEl.value.trim():'';
-  if(!email){if(errEl)errEl.textContent='Please enter your recovery email.';return;}
-  if(errEl){errEl.style.color='var(--red)';errEl.textContent='';}
-  fbAuth.sendPasswordResetEmail(email)
-    .then(function(){
-      if(errEl){errEl.style.color='var(--green)';errEl.textContent='Reset link sent! Check your inbox.';}
-      if(eEl)eEl.value='';
+  var email=eEl?eEl.value.trim().toLowerCase():'';
+  if(!email){if(errEl){errEl.style.color='var(--red)';errEl.textContent='Please enter your recovery email.';}return;}
+  if(errEl)errEl.textContent='';
+  // Verify email exists in our Firestore users collection before sending
+  fbDb.collection('users').where('recoveryEmail','==',email).limit(1).get()
+    .then(function(snap){
+      if(snap.empty){
+        if(errEl){errEl.style.color='var(--red)';errEl.textContent='No account found with that recovery email.';}
+        return;
+      }
+      fbAuth.sendPasswordResetEmail(email)
+        .then(function(){
+          if(errEl){errEl.style.color='var(--green)';errEl.textContent='Reset link sent! Check your inbox.';}
+          if(eEl)eEl.value='';
+        })
+        .catch(function(e){
+          if(errEl){errEl.style.color='var(--red)';errEl.textContent='Error sending reset email: '+e.message;}
+        });
     })
     .catch(function(e){
-      if(errEl){
-        errEl.style.color='var(--red)';
-        errEl.textContent=e.code==='auth/user-not-found'||e.code==='auth/invalid-email'
-          ?'No account found with that email.'
-          :'Error: '+e.message;
-      }
+      if(errEl){errEl.style.color='var(--red)';errEl.textContent='Error: '+e.message;}
     });
 }
 
@@ -552,8 +558,8 @@ function doSignIn(email,p,errEl,btn){
     .then(function(){closeModal();})
     .catch(function(e){
       if(errEl)errEl.textContent=
-        (e.code==='auth/user-not-found'||e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')
-        ?'Incorrect username or password.'
+        (e.code==='auth/user-not-found'||e.code==='auth/wrong-password'||e.code==='auth/invalid-credential'||e.code==='auth/invalid-login-credentials'||e.code==='auth/invalid-email')
+        ?'Incorrect username or password — please try again.'
         :'Error: '+e.message;
       if(btn)btn.disabled=false;
     });
