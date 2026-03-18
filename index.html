@@ -633,13 +633,21 @@ window.addEventListener('load',function(){
     if(submitBtn)submitBtn.disabled=false;
     if(user){
       currentUID=user.uid;
-      var uname=user.email.replace('@aintuition.app','');
-      var unameEl=document.getElementById('authUsername');
       var loggedOut=document.getElementById('authLoggedOut');
       var loggedIn=document.getElementById('authLoggedIn');
-      if(unameEl)unameEl.textContent=uname;
       if(loggedOut)loggedOut.style.display='none';
       if(loggedIn)loggedIn.style.display='flex';
+      // Get username from Firestore, never show email
+      fbDb.collection('users').doc(user.uid).get().then(function(doc){
+        var uname=(doc.exists&&doc.data().username)
+          ?doc.data().username
+          :user.email.replace('@aintuition.app','');
+        var el=document.getElementById('authUsername');
+        if(el)el.textContent=uname;
+      }).catch(function(){
+        var el=document.getElementById('authUsername');
+        if(el)el.textContent=user.email.replace('@aintuition.app','');
+      });
       loadData();
     } else {
       currentUID=null;
