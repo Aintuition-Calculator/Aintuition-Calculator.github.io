@@ -697,7 +697,7 @@ function fb(n){
   if(a>=1e3)return'$'+(n/1e3).toFixed(1)+'K';
   return'$'+Math.round(n).toLocaleString();
 }
-function fd(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});}
+function fd(d){var mm=String(d.getMonth()+1).padStart(2,'0');var dd=String(d.getDate()).padStart(2,'0');var yyyy=d.getFullYear();return mm+'/'+dd+'/'+yyyy;}
 function fdL(d){return d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});}
 function fi(n){return Math.round(n).toLocaleString();}
 function gv(id){return document.getElementById(id).value;}
@@ -773,14 +773,14 @@ function simulate(){
   var bd=getBD(sd,td);
   if(!bd.length)return[];
 
-  // Build deposit map
+  // Deposit map
   var dm={};
   for(var i=0;i<deps.length;i++){
     var dy=parseInt(deps[i].day),am=parseFloat(deps[i].amount);
     if(dy>=1&&dy<=td&&am>0&&!isNaN(dy)&&!isNaN(am))
       dm[dy]=(dm[dy]||0)+am;
   }
-  // Build withdrawal map
+  // Withdrawal map
   var wm={};
   for(var i=0;i<wdrs.length;i++){
     var wy=parseInt(wdrs[i].day),wa=parseFloat(wdrs[i].amount);
@@ -788,93 +788,65 @@ function simulate(){
       wm[wy]=(wm[wy]||0)+wa;
   }
 
-  var G={};
-  function ag(ci,p,n){
-    var k=ci+'|'+p;
-    if(G[k])G[k].count+=n;
-    else G[k]={count:n,accum:0,expiry:ci+ed,principal:p};
-  }
-  ag(0,sa,1);
-
-  var rows=[],cum=0,totalWdrn=0;
+  // expiryMap[day] = total principal expiring on that day
+  // totalPrincipal = running sum of all active lot principals
+  // gAccum = global accumulator toward next compound
+  var expiryMap={};
+  var totalPrincipal=sa;
+  expiryMap[ed]=(expiryMap[ed]||0)+sa;
+  var gAccum=0,cum=0,totalWdrn=0;
+  var rows=[];
 
   for(var day=0;day<td;day++){
     var dn=day+1;
 
-    // ── Deposits
-    if(dm[dn])ag(day,dm[dn],1);
+    // ── External deposit
+    if(dm[dn]){
+      var depAmt=dm[dn];
+      var depExp=day+ed;
+      expiryMap[depExp]=(expiryMap[depExp]||0)+depAmt;
+      totalPrincipal+=depAmt;
+    }
 
     // ── Expire lots
-    var expL=0,keys=Object.keys(G),ki;
-    for(ki=0;ki<keys.length;ki++){
-      if(G[keys[ki]]&&G[keys[ki]].expiry<=day){expL+=G[keys[ki]].count;delete G[keys[ki]];}
-    }
+    var expiring=expiryMap[day]||0;
+    var expL=expiring>0?1:0;
+    if(expiring){totalPrincipal-=expiring;delete expiryMap[day];}
 
-    // ── Withdrawals: reduce principal proportionally across all active lots
+    // ── Withdrawals: reduce totalPrincipal and scale expiryMap proportionally
     var wdrAmt=0;
-    if(wm[dn]){
-      var want=wm[dn];
-      var tp0=0;
-      keys=Object.keys(G);
-      for(ki=0;ki<keys.length;ki++){if(G[keys[ki]])tp0+=G[keys[ki]].count*G[keys[ki]].principal;}
-      // Cap at available principal
-      var actual=Math.min(want,tp0);
-      wdrAmt=actual;
-      totalWdrn+=actual;
-      if(actual>0&&tp0>0){
-        var ratio=(tp0-actual)/tp0; // scale factor
-        // Scale each lot's principal proportionally
-        keys=Object.keys(G);
-        for(ki=0;ki<keys.length;ki++){
-          var gw=G[keys[ki]];
-          if(!gw)continue;
-          var newP=gw.principal*ratio;
-          if(newP>=0.01){
-            gw.accum=gw.accum*ratio;
-            gw._newP=newP;
-          }
-        }
-        // Re-build groups with new principals
-        var survivors=[];
-        for(ki=0;ki<keys.length;ki++){
-          var gs=G[keys[ki]];
-          if(gs&&gs._newP!==undefined&&gs._newP>=0.01){
-            survivors.push({count:gs.count,accum:gs.accum,expiry:gs.expiry,principal:gs._newP});
-          }
-        }
-        G={};
-        for(var sj=0;sj<survivors.length;sj++){
-          var s=survivors[sj];
-          var nk=s.expiry+'_'+Math.round(s.principal*100)+'_'+si;
-          G[nk]=s;
-        }
-      }
+    if(wm[dn]&&totalPrincipal>0){
+      var actual=Math.min(wm[dn],totalPrincipal);
+      wdrAmt=actual;totalWdrn+=actual;
+      var ratio=(totalPrincipal-actual)/totalPrincipal;
+      totalPrincipal=totalPrincipal-actual;
+      gAccum=gAccum*ratio;
+      var keys=Object.keys(expiryMap);
+      for(var ki=0;ki<keys.length;ki++)expiryMap[keys[ki]]*=ratio;
     }
 
-    // ── Earn & compound
-    var earn=0,comps=0,sp={};
-    keys=Object.keys(G);
-    for(ki=0;ki<keys.length;ki++){
-      var ge=G[keys[ki]];if(!ge)continue;
-      ge.accum+=ge.principal*dr;
-      earn+=ge.principal*dr*ge.count;
-      while(ge.accum>=th){
-        sp[day+1]=(sp[day+1]||0)+ge.count;
-        comps+=ge.count;ge.accum-=th;
-      }
-    }
-    var sk=Object.keys(sp);
-    for(var si=0;si<sk.length;si++)ag(+sk[si],th,+sp[sk[si]]);
+    // ── Daily earnings: O(1) — just totalPrincipal * rate
+    var earn=totalPrincipal*dr;
+    gAccum+=earn;cum+=earn;
 
-    var tp=0,lots=0;
-    keys=Object.keys(G);
-    for(ki=0;ki<keys.length;ki++){
-      if(G[keys[ki]]){tp+=G[keys[ki]].count*G[keys[ki]].principal;lots+=G[keys[ki]].count;}
+    // ── Batch compound: O(1) instead of while loop
+    var comps=0;
+    if(gAccum>=th){
+      comps=Math.floor(gAccum/th);
+      gAccum=gAccum%th;
+      var newPrincipal=comps*th;
+      var expDay=day+1+ed;
+      expiryMap[expDay]=(expiryMap[expDay]||0)+newPrincipal;
+      totalPrincipal+=newPrincipal;
     }
-    cum+=earn;
+
+    // Count active lots as number of entries in expiryMap
+    var activeLots=Object.keys(expiryMap).length;
+
     rows.push({
       day:dn,date:bd[day],
-      tp:tp,earn:earn,comps:comps,expL:expL,lots:lots,cum:cum,
+      tp:totalPrincipal,earn:earn,comps:comps,
+      expL:expL,lots:activeLots,cum:cum,
       wdrAmt:wdrAmt,isDep:!!dm[dn],isWdr:!!wm[dn]
     });
   }
