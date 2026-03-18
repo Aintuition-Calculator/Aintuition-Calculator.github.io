@@ -526,30 +526,51 @@ function submitAuth(){
         });
     }
   } else {
-    // SIGNUP
+    // SIGNUP — check username and recovery email don't already exist
     var realEmailEl=document.getElementById('authEmail');
     var realEmail=realEmailEl?realEmailEl.value.trim():'';
-    // Use real email as auth email if provided, otherwise use fake
     var authEmail=realEmail?realEmail:toEmail(u);
     var username=u.toLowerCase();
-    fbAuth.createUserWithEmailAndPassword(authEmail,p)
-      .then(function(cred){
-        var uid=cred.user.uid;
-        // Save username -> authEmail mapping so username login works
-        var batch=[
-          fbDb.collection('usernames').doc(username).set({uid:uid,authEmail:authEmail}),
-          fbDb.collection('users').doc(uid).set({username:username,authEmail:authEmail,recoveryEmail:realEmail||''},{ merge:true})
-        ];
-        Promise.all(batch).catch(function(){});
-        closeModal();
-      })
-      .catch(function(e){
-        if(errEl)errEl.textContent=
-          e.code==='auth/email-already-in-use'?'That username is already taken.':
-          e.code==='auth/invalid-email'?'Please enter a valid recovery email.':
-          'Error: '+e.message;
+
+    // Build checks: always check username, optionally check recovery email
+    var checks=[fbDb.collection('usernames').doc(username).get()];
+    if(realEmail)checks.push(fbDb.collection('users').where('recoveryEmail','==',realEmail).limit(1).get());
+
+    Promise.all(checks).then(function(results){
+      var usernameDoc=results[0];
+      var emailSnap=results[1]||null;
+      if(usernameDoc.exists){
+        if(errEl)errEl.textContent='That username is already taken.';
         if(btn)btn.disabled=false;
-      });
+        return;
+      }
+      if(emailSnap&&!emailSnap.empty){
+        if(errEl)errEl.textContent='That recovery email is already linked to an account.';
+        if(btn)btn.disabled=false;
+        return;
+      }
+      // All clear — create the account
+      fbAuth.createUserWithEmailAndPassword(authEmail,p)
+        .then(function(cred){
+          var uid=cred.user.uid;
+          var batch=[
+            fbDb.collection('usernames').doc(username).set({uid:uid,authEmail:authEmail}),
+            fbDb.collection('users').doc(uid).set({username:username,authEmail:authEmail,recoveryEmail:realEmail||''},{merge:true})
+          ];
+          Promise.all(batch).catch(function(){});
+          closeModal();
+        })
+        .catch(function(e){
+          if(errEl)errEl.textContent=
+            e.code==='auth/email-already-in-use'?'That recovery email is already in use.':
+            e.code==='auth/invalid-email'?'Please enter a valid recovery email.':
+            'Error: '+e.message;
+          if(btn)btn.disabled=false;
+        });
+    }).catch(function(e){
+      if(errEl)errEl.textContent='Error checking availability: '+e.message;
+      if(btn)btn.disabled=false;
+    });
   }
 }
 
