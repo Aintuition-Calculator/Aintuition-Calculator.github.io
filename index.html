@@ -327,6 +327,13 @@ tbody tr:last-child td{border-bottom:none}
 
 <script>
 
+window.addEventListener('load',function(){
+  if(typeof firebase==='undefined'){
+    var btn=document.getElementById('authLoggedOut');
+    if(btn)btn.innerHTML='<span style="font-size:11px;color:var(--amber)">Auth unavailable (check network)</span>';
+    return;
+  }
+
 // ── Firebase ──
 var firebaseConfig={
   apiKey:"AIzaSyB5uaN79YtkdtEwpBcZndd70qZNU4plwAY",
@@ -351,7 +358,6 @@ function openModal(){
 }
 function closeModal(){document.getElementById('authModal').classList.remove('show');}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
-document.getElementById('authModal').addEventListener('click',function(e){if(e.target===this)closeModal();});
 
 var authMode='login';
 function switchTab(mode){
@@ -397,8 +403,6 @@ function submitAuth(){
 }
 
 // Allow Enter key to submit
-document.getElementById('authPass').addEventListener('keydown',function(e){if(e.key==='Enter')submitAuth();});
-document.getElementById('authUser').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('authPass').focus();});
 
 fbAuth.onAuthStateChanged(function(user){
   var btn=document.getElementById('authSubmitBtn');
@@ -409,6 +413,7 @@ fbAuth.onAuthStateChanged(function(user){
     document.getElementById('authUsername').textContent=uname;
     document.getElementById('authLoggedOut').style.display='none';
     document.getElementById('authLoggedIn').style.display='flex';
+    isDirty=false;
     loadData();
   } else {
     currentUID=null;
@@ -428,7 +433,7 @@ function saveData(){
     savedAt:new Date().toISOString()
   };
   fbDb.collection('users').doc(currentUID).set(data)
-    .then(function(){showToast('Saved!');})
+    .then(function(){isDirty=false;showToast('Saved!');})
     .catch(function(e){showToast('Save failed: '+e.message);});
 }
 
@@ -456,12 +461,15 @@ function loadData(){
         renderWdrs();
       }
       schedule();
+      isDirty=false;
       showToast('Settings loaded!');
     })
     .catch(function(e){console.error('Load error:',e);});
 }
 
-var res=[],cv='tp',deps=[],wdrs=[],dID=0,wID=0,tmr=null;
+});
+
+var res=[],cv='tp',deps=[],wdrs=[],dID=0,wID=0,tmr=null,isDirty=false;
 
 function fb(n){
   if(!n||isNaN(n))return'$0';
@@ -950,7 +958,7 @@ function refreshHints(){
   }
 }
 
-function schedule(){if(tmr)clearTimeout(tmr);tmr=setTimeout(updateAll,300);}
+function schedule(){isDirty=true;if(tmr)clearTimeout(tmr);tmr=setTimeout(updateAll,300);}
 
 function exportCSV(){
   if(!res.length)return;
@@ -972,7 +980,23 @@ function showToast(msg){
   setTimeout(function(){t.classList.remove('on');},2200);
 }
 
+window.addEventListener('beforeunload',function(e){
+  if(currentUID&&isDirty){
+    e.preventDefault();
+    e.returnValue='You have unsaved changes. Are you sure you want to leave?';
+    return e.returnValue;
+  }
+});
+
 window.addEventListener('resize',function(){if(res.length)drawChart();});
+document.addEventListener('DOMContentLoaded',function(){
+  var passEl=document.getElementById('authPass');
+  var userEl=document.getElementById('authUser');
+  var modalEl=document.getElementById('authModal');
+  if(passEl)passEl.addEventListener('keydown',function(e){if(e.key==='Enter')submitAuth();});
+  if(userEl)userEl.addEventListener('keydown',function(e){if(e.key==='Enter'){var p=document.getElementById('authPass');if(p)p.focus();}});
+  if(modalEl)modalEl.addEventListener('click',function(e){if(e.target===modalEl)closeModal();});
+});
 updateAll();
 </script>
 </body>
