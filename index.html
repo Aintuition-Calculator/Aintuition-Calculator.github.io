@@ -115,7 +115,35 @@ tbody tr:last-child td{border-bottom:none}
 ::-webkit-scrollbar-track{background:var(--bg2)}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 .warn{font-size:11px;color:var(--amber);margin-top:5px;display:none}
+
+/* ── Auth modal ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:28px 24px;width:100%;max-width:360px;position:relative}
+.modal h2{font-size:17px;font-weight:600;margin-bottom:6px}
+.modal p{font-size:12px;color:var(--text3);margin-bottom:20px}
+.modal-close{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px}
+.modal-close:hover{color:var(--text)}
+.modal label{display:block;font-size:11px;font-weight:500;color:var(--text2);margin-bottom:5px}
+.modal input[type=text],.modal input[type=password]{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);padding:9px 12px;font-size:14px;font-family:inherit;margin-bottom:12px}
+.modal input[type=text]:focus,.modal input[type=password]:focus{outline:none;border-color:var(--accent)}
+.modal-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg3);padding:3px;border-radius:var(--rs)}
+.modal-tab{flex:1;padding:7px;text-align:center;font-size:13px;font-weight:500;border-radius:6px;cursor:pointer;color:var(--text2);transition:all .15s;border:none;background:transparent;font-family:inherit}
+.modal-tab.on{background:var(--bg4);color:var(--text);border:1px solid var(--border2)}
+.modal-err{font-size:12px;color:var(--red);margin-bottom:10px;min-height:18px}
+.modal-btn{width:100%;padding:10px;background:var(--accent);border:none;border-radius:var(--rs);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.modal-btn:hover{opacity:.88}
+.modal-btn:disabled{opacity:.5;cursor:not-allowed}
+/* Auth header area */
+.auth-area{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.auth-user{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:8px}
+.auth-username{color:var(--accent);font-weight:500}
+.btn-save{background:var(--green);border-color:var(--green);color:#000;font-weight:600}
+.btn-save:hover{opacity:.88}
 </style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div class="app">
@@ -125,7 +153,17 @@ tbody tr:last-child td{border-bottom:none}
       <h1>AIntuition Compounding Calculator <span class="badge">LIVE</span></h1>
       <p class="tag">5% daily &middot; $500 compound trigger &middot; 100-day lot expiry &middot; business days only</p>
     </div>
-    <button class="btn btn-sm" onclick="exportCSV()">&#8595; Export CSV</button>
+    <div class="auth-area">
+      <button class="btn btn-sm" onclick="exportCSV()">&#8595; Export CSV</button>
+      <div id="authLoggedOut" style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-accent" onclick="openModal()">Login / Sign Up</button>
+      </div>
+      <div id="authLoggedIn" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="auth-user">Signed in as <span class="auth-username" id="authUsername"></span></span>
+        <button class="btn btn-sm btn-save" onclick="saveData()">&#9729; Save</button>
+        <button class="btn btn-sm" onclick="signOut()">Logout</button>
+      </div>
+    </div>
   </div>
 
   <!-- Settings -->
@@ -264,10 +302,165 @@ tbody tr:last-child td{border-bottom:none}
     </a>
   </div>
 
+
+<!-- Auth Modal -->
+<div class="modal-overlay" id="authModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">&#215;</button>
+    <h2 id="modalTitle">Welcome back</h2>
+    <p id="modalSubtitle">Sign in to save and restore your calculator settings.</p>
+    <div class="modal-tabs">
+      <button class="modal-tab on" id="tabLogin" onclick="switchTab('login')">Login</button>
+      <button class="modal-tab" id="tabSignup" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+    <label for="authUser">Username</label>
+    <input type="text" id="authUser" placeholder="Enter username" autocomplete="username">
+    <label for="authPass">Password</label>
+    <input type="password" id="authPass" placeholder="Enter password" autocomplete="current-password">
+    <div class="modal-err" id="authErr"></div>
+    <button class="modal-btn" id="authSubmitBtn" onclick="submitAuth()">Login</button>
+  </div>
+</div>
+
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
+
+// ── Firebase ──
+var firebaseConfig={
+  apiKey:"AIzaSyB5uaN79YtkdtEwpBcZndd70qZNU4plwAY",
+  authDomain:"aintuition-calculator.firebaseapp.com",
+  projectId:"aintuition-calculator",
+  storageBucket:"aintuition-calculator.firebasestorage.app",
+  messagingSenderId:"272621467759",
+  appId:"1:272621467759:web:2c3ed79d7d08ce213f759a"
+};
+firebase.initializeApp(firebaseConfig);
+var fbAuth=firebase.auth();
+var fbDb=firebase.firestore();
+var currentUID=null;
+
+function toEmail(u){return u.trim().toLowerCase()+'@aintuition.app';}
+
+function openModal(){
+  document.getElementById('authModal').classList.add('show');
+  document.getElementById('authUser').focus();
+  document.getElementById('authErr').textContent='';
+  document.getElementById('authPass').value='';
+}
+function closeModal(){document.getElementById('authModal').classList.remove('show');}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+document.getElementById('authModal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+var authMode='login';
+function switchTab(mode){
+  authMode=mode;
+  document.getElementById('tabLogin').classList.toggle('on',mode==='login');
+  document.getElementById('tabSignup').classList.toggle('on',mode==='signup');
+  document.getElementById('modalTitle').textContent=mode==='login'?'Welcome back':'Create account';
+  document.getElementById('modalSubtitle').textContent=mode==='login'
+    ?'Sign in to save and restore your calculator settings.'
+    :'Choose a username and password to get started.';
+  document.getElementById('authSubmitBtn').textContent=mode==='login'?'Login':'Sign Up';
+  document.getElementById('authErr').textContent='';
+}
+
+function submitAuth(){
+  var u=document.getElementById('authUser').value.trim();
+  var p=document.getElementById('authPass').value;
+  var errEl=document.getElementById('authErr');
+  var btn=document.getElementById('authSubmitBtn');
+  if(!u){errEl.textContent='Please enter a username.';return;}
+  if(p.length<6){errEl.textContent='Password must be at least 6 characters.';return;}
+  btn.disabled=true;errEl.textContent='';
+  var email=toEmail(u);
+  if(authMode==='login'){
+    fbAuth.signInWithEmailAndPassword(email,p)
+      .then(function(){closeModal();})
+      .catch(function(e){
+        errEl.textContent=e.code==='auth/user-not-found'||e.code==='auth/wrong-password'||e.code==='auth/invalid-credential'
+          ?'Incorrect username or password.'
+          :'Error: '+e.message;
+        btn.disabled=false;
+      });
+  } else {
+    fbAuth.createUserWithEmailAndPassword(email,p)
+      .then(function(){closeModal();})
+      .catch(function(e){
+        errEl.textContent=e.code==='auth/email-already-in-use'
+          ?'That username is already taken.'
+          :'Error: '+e.message;
+        btn.disabled=false;
+      });
+  }
+}
+
+// Allow Enter key to submit
+document.getElementById('authPass').addEventListener('keydown',function(e){if(e.key==='Enter')submitAuth();});
+document.getElementById('authUser').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('authPass').focus();});
+
+fbAuth.onAuthStateChanged(function(user){
+  var btn=document.getElementById('authSubmitBtn');
+  if(btn)btn.disabled=false;
+  if(user){
+    currentUID=user.uid;
+    var uname=user.email.replace('@aintuition.app','');
+    document.getElementById('authUsername').textContent=uname;
+    document.getElementById('authLoggedOut').style.display='none';
+    document.getElementById('authLoggedIn').style.display='flex';
+    loadData();
+  } else {
+    currentUID=null;
+    document.getElementById('authLoggedOut').style.display='flex';
+    document.getElementById('authLoggedIn').style.display='none';
+  }
+});
+
+function signOut(){fbAuth.signOut().then(function(){showToast('Logged out.');});}
+
+function saveData(){
+  if(!currentUID){showToast('Please log in to save.');return;}
+  var data={
+    sa:gv('sa'),sd:gv('sd'),td:gv('td'),
+    deps:deps.map(function(d){return{id:d.id,day:d.day,amount:d.amount};}),
+    wdrs:wdrs.map(function(w){return{id:w.id,day:w.day,amount:w.amount};}),
+    savedAt:new Date().toISOString()
+  };
+  fbDb.collection('users').doc(currentUID).set(data)
+    .then(function(){showToast('Saved!');})
+    .catch(function(e){showToast('Save failed: '+e.message);});
+}
+
+function loadData(){
+  if(!currentUID)return;
+  fbDb.collection('users').doc(currentUID).get()
+    .then(function(doc){
+      if(!doc.exists)return;
+      var d=doc.data();
+      if(d.sa)document.getElementById('sa').value=d.sa;
+      if(d.sd)document.getElementById('sd').value=d.sd;
+      if(d.td){
+        document.getElementById('td').value=d.td;
+        document.getElementById('tdR').value=Math.min(d.td,500);
+        document.getElementById('tdLbl').textContent=d.td;
+      }
+      if(d.deps&&d.deps.length){
+        deps=d.deps;
+        dID=Math.max.apply(null,deps.map(function(x){return x.id||0;}));
+        renderDeps();
+      }
+      if(d.wdrs&&d.wdrs.length){
+        wdrs=d.wdrs;
+        wID=Math.max.apply(null,wdrs.map(function(x){return x.id||0;}));
+        renderWdrs();
+      }
+      schedule();
+      showToast('Settings loaded!');
+    })
+    .catch(function(e){console.error('Load error:',e);});
+}
+
 var res=[],cv='tp',deps=[],wdrs=[],dID=0,wID=0,tmr=null;
 
 function fb(n){
