@@ -329,103 +329,87 @@ tbody tr:last-child td{border-bottom:none}
 
 var currentUID=null,fbAuth=null,fbDb=null;
 
-window.addEventListener('load',function(){
-  if(typeof firebase==='undefined'){
-    var btn=document.getElementById('authLoggedOut');
-    if(btn)btn.innerHTML='<span style="font-size:11px;color:var(--amber)">Auth unavailable (check network)</span>';
-    return;
-  }
-
-// ── Firebase ──
-var firebaseConfig={
-  apiKey:"AIzaSyB5uaN79YtkdtEwpBcZndd70qZNU4plwAY",
-  authDomain:"aintuition-calculator.firebaseapp.com",
-  projectId:"aintuition-calculator",
-  storageBucket:"aintuition-calculator.firebasestorage.app",
-  messagingSenderId:"272621467759",
-  appId:"1:272621467759:web:2c3ed79d7d08ce213f759a"
-};
-firebase.initializeApp(firebaseConfig);
-fbAuth=firebase.auth();
-fbDb=firebase.firestore();
+// ── Auth helper functions (global scope so onclick handlers can reach them) ──
+var authMode='login';
 
 function toEmail(u){return u.trim().toLowerCase()+'@aintuition.app';}
 
 function openModal(){
-  document.getElementById('authModal').classList.add('show');
-  document.getElementById('authUser').focus();
-  document.getElementById('authErr').textContent='';
-  document.getElementById('authPass').value='';
+  var m=document.getElementById('authModal');
+  if(m)m.classList.add('show');
+  var u=document.getElementById('authUser');
+  if(u){u.focus();u.value='';}
+  var p=document.getElementById('authPass');
+  if(p)p.value='';
+  var err=document.getElementById('authErr');
+  if(err)err.textContent='';
 }
-function closeModal(){document.getElementById('authModal').classList.remove('show');}
+function closeModal(){
+  var m=document.getElementById('authModal');
+  if(m)m.classList.remove('show');
+}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
 
-var authMode='login';
 function switchTab(mode){
   authMode=mode;
-  document.getElementById('tabLogin').classList.toggle('on',mode==='login');
-  document.getElementById('tabSignup').classList.toggle('on',mode==='signup');
-  document.getElementById('modalTitle').textContent=mode==='login'?'Welcome back':'Create account';
-  document.getElementById('modalSubtitle').textContent=mode==='login'
+  var tl=document.getElementById('tabLogin');
+  var ts=document.getElementById('tabSignup');
+  if(tl)tl.classList.toggle('on',mode==='login');
+  if(ts)ts.classList.toggle('on',mode==='signup');
+  var title=document.getElementById('modalTitle');
+  var sub=document.getElementById('modalSubtitle');
+  var btn=document.getElementById('authSubmitBtn');
+  var err=document.getElementById('authErr');
+  if(title)title.textContent=mode==='login'?'Welcome back':'Create account';
+  if(sub)sub.textContent=mode==='login'
     ?'Sign in to save and restore your calculator settings.'
     :'Choose a username and password to get started.';
-  document.getElementById('authSubmitBtn').textContent=mode==='login'?'Login':'Sign Up';
-  document.getElementById('authErr').textContent='';
+  if(btn)btn.textContent=mode==='login'?'Login':'Sign Up';
+  if(err)err.textContent='';
 }
 
 function submitAuth(){
-  var u=document.getElementById('authUser').value.trim();
-  var p=document.getElementById('authPass').value;
+  if(!fbAuth){showToast('Auth not ready. Please wait a moment.');return;}
+  var uEl=document.getElementById('authUser');
+  var pEl=document.getElementById('authPass');
   var errEl=document.getElementById('authErr');
   var btn=document.getElementById('authSubmitBtn');
-  if(!u){errEl.textContent='Please enter a username.';return;}
-  if(p.length<6){errEl.textContent='Password must be at least 6 characters.';return;}
-  btn.disabled=true;errEl.textContent='';
+  var u=uEl?uEl.value.trim():'';
+  var p=pEl?pEl.value:'';
+  if(!u){if(errEl)errEl.textContent='Please enter a username.';return;}
+  if(p.length<6){if(errEl)errEl.textContent='Password must be at least 6 characters.';return;}
+  if(btn)btn.disabled=true;
+  if(errEl)errEl.textContent='';
   var email=toEmail(u);
   if(authMode==='login'){
     fbAuth.signInWithEmailAndPassword(email,p)
       .then(function(){closeModal();})
       .catch(function(e){
-        errEl.textContent=e.code==='auth/user-not-found'||e.code==='auth/wrong-password'||e.code==='auth/invalid-credential'
+        if(errEl)errEl.textContent=(e.code==='auth/user-not-found'||e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')
           ?'Incorrect username or password.'
           :'Error: '+e.message;
-        btn.disabled=false;
+        if(btn)btn.disabled=false;
       });
   } else {
     fbAuth.createUserWithEmailAndPassword(email,p)
       .then(function(){closeModal();})
       .catch(function(e){
-        errEl.textContent=e.code==='auth/email-already-in-use'
+        if(errEl)errEl.textContent=e.code==='auth/email-already-in-use'
           ?'That username is already taken.'
           :'Error: '+e.message;
-        btn.disabled=false;
+        if(btn)btn.disabled=false;
       });
   }
 }
 
-// Allow Enter key to submit
-
-fbAuth.onAuthStateChanged(function(user){
-  var btn=document.getElementById('authSubmitBtn');
-  if(btn)btn.disabled=false;
-  if(user){
-    currentUID=user.uid;
-    var uname=user.email.replace('@aintuition.app','');
-    document.getElementById('authUsername').textContent=uname;
-    document.getElementById('authLoggedOut').style.display='none';
-    document.getElementById('authLoggedIn').style.display='flex';
-    loadData();
-  } else {
-    currentUID=null;
-    document.getElementById('authLoggedOut').style.display='flex';
-    document.getElementById('authLoggedIn').style.display='none';
-  }
-});
-
-function signOut(){fbAuth.signOut().then(function(){showToast('Logged out.');});}
+function signOut(){
+  if(!fbAuth)return;
+  fbAuth.signOut().then(function(){showToast('Logged out.');});
+}
 
 function saveData(){
   if(!currentUID){showToast('Please log in to save.');return;}
+  if(!fbDb){showToast('Database not ready.');return;}
   var data={
     sa:gv('sa'),sd:gv('sd'),td:gv('td'),
     deps:deps.map(function(d){return{id:d.id,day:d.day,amount:d.amount};}),
@@ -438,17 +422,20 @@ function saveData(){
 }
 
 function loadData(){
-  if(!currentUID)return;
+  if(!currentUID||!fbDb)return;
   fbDb.collection('users').doc(currentUID).get()
     .then(function(doc){
       if(!doc.exists)return;
       var d=doc.data();
-      if(d.sa)document.getElementById('sa').value=d.sa;
-      if(d.sd)document.getElementById('sd').value=d.sd;
+      if(d.sa){var sa=document.getElementById('sa');if(sa)sa.value=d.sa;}
+      if(d.sd){var sd=document.getElementById('sd');if(sd)sd.value=d.sd;}
       if(d.td){
-        document.getElementById('td').value=d.td;
-        document.getElementById('tdR').value=Math.min(d.td,500);
-        document.getElementById('tdLbl').textContent=d.td;
+        var td=document.getElementById('td');
+        var tdR=document.getElementById('tdR');
+        var tdL=document.getElementById('tdLbl');
+        if(td)td.value=d.td;
+        if(tdR)tdR.value=Math.min(d.td,500);
+        if(tdL)tdL.textContent=d.td;
       }
       if(d.deps&&d.deps.length){
         deps=d.deps;
@@ -466,6 +453,46 @@ function loadData(){
     .catch(function(e){console.error('Load error:',e);});
 }
 
+// ── Firebase init (inside load to ensure CDN scripts are ready) ──
+window.addEventListener('load',function(){
+  if(typeof firebase==='undefined'){
+    var btn=document.getElementById('authLoggedOut');
+    if(btn)btn.innerHTML='<span style="font-size:11px;color:var(--amber)">Auth unavailable (check network)</span>';
+    return;
+  }
+  var firebaseConfig={
+    apiKey:"AIzaSyB5uaN79YtkdtEwpBcZndd70qZNU4plwAY",
+    authDomain:"aintuition-calculator.firebaseapp.com",
+    projectId:"aintuition-calculator",
+    storageBucket:"aintuition-calculator.firebasestorage.app",
+    messagingSenderId:"272621467759",
+    appId:"1:272621467759:web:2c3ed79d7d08ce213f759a"
+  };
+  firebase.initializeApp(firebaseConfig);
+  fbAuth=firebase.auth();
+  fbDb=firebase.firestore();
+
+  fbAuth.onAuthStateChanged(function(user){
+    var submitBtn=document.getElementById('authSubmitBtn');
+    if(submitBtn)submitBtn.disabled=false;
+    if(user){
+      currentUID=user.uid;
+      var uname=user.email.replace('@aintuition.app','');
+      var unameEl=document.getElementById('authUsername');
+      var loggedOut=document.getElementById('authLoggedOut');
+      var loggedIn=document.getElementById('authLoggedIn');
+      if(unameEl)unameEl.textContent=uname;
+      if(loggedOut)loggedOut.style.display='none';
+      if(loggedIn)loggedIn.style.display='flex';
+      loadData();
+    } else {
+      currentUID=null;
+      var loggedOut=document.getElementById('authLoggedOut');
+      var loggedIn=document.getElementById('authLoggedIn');
+      if(loggedOut)loggedOut.style.display='flex';
+      if(loggedIn)loggedIn.style.display='none';
+    }
+  });
 });
 
 var res=[],cv='tp',deps=[],wdrs=[],dID=0,wID=0,tmr=null;
