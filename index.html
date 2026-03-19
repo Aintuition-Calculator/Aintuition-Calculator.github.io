@@ -463,30 +463,24 @@ function closeForgotModal(){
 }
 
 function submitForgot(){
-  if(!fbAuth||!fbDb){showToast('Auth not ready. Please wait.');return;}
+  if(!fbAuth){showToast('Auth not ready. Please wait.');return;}
   var eEl=document.getElementById('forgotEmail');
   var errEl=document.getElementById('forgotErr');
   var email=eEl?eEl.value.trim().toLowerCase():'';
   if(!email){if(errEl){errEl.style.color='var(--red)';errEl.textContent='Please enter your recovery email.';}return;}
   if(errEl)errEl.textContent='';
-  // Verify email exists in our Firestore users collection before sending
-  fbDb.collection('users').where('recoveryEmail','==',email).limit(1).get()
-    .then(function(snap){
-      if(snap.empty){
-        if(errEl){errEl.style.color='var(--red)';errEl.textContent='No account found with that recovery email.';}
-        return;
-      }
-      fbAuth.sendPasswordResetEmail(email)
-        .then(function(){
-          if(errEl){errEl.style.color='var(--green)';errEl.textContent='Reset link sent! Check your inbox — also check your junk or spam folder.';}
-          if(eEl)eEl.value='';
-        })
-        .catch(function(e){
-          if(errEl){errEl.style.color='var(--red)';errEl.textContent='Error sending reset email: '+e.message;}
-        });
+  fbAuth.sendPasswordResetEmail(email)
+    .then(function(){
+      if(errEl){errEl.style.color='var(--green)';errEl.textContent='Reset link sent! Check your inbox — also check your junk or spam folder.';}
+      if(eEl)eEl.value='';
     })
     .catch(function(e){
-      if(errEl){errEl.style.color='var(--red)';errEl.textContent='Error: '+e.message;}
+      if(errEl){
+        errEl.style.color='var(--red)';
+        errEl.textContent=(e.code==='auth/user-not-found'||e.code==='auth/invalid-email')
+          ?'No account found with that email.'
+          :'Error: '+e.message;
+      }
     });
 }
 
@@ -594,7 +588,7 @@ function saveData(){
   if(!currentUID){showToast('Please log in to save.');return;}
   if(!fbDb){showToast('Database not ready.');return;}
   var data={
-    sa:gv('sa'),sd:gv('sd'),td:gv('td'),
+    sa:gv('sa'),sd:gv('sd'),td:gv('td'),dr:gv('dr'),th:gv('th'),
     deps:deps.map(function(d){return{id:d.id,day:d.day,amount:d.amount};}),
     wdrs:wdrs.map(function(w){return{id:w.id,day:w.day,amount:w.amount};}),
     savedAt:new Date().toISOString()
@@ -611,6 +605,8 @@ function loadData(){
       if(!doc.exists)return;
       var d=doc.data();
       if(d.sa){var sa=document.getElementById('sa');if(sa)sa.value=d.sa;}
+      if(d.dr){var dr=document.getElementById('dr');if(dr)dr.value=d.dr;}
+      if(d.th){var th=document.getElementById('th');if(th)th.value=d.th;}
       if(d.sd){var sd=document.getElementById('sd');if(sd)sd.value=d.sd;}
       if(d.td){
         var td=document.getElementById('td');
